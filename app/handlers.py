@@ -197,7 +197,6 @@ async def handle_waiting_for_adults(msg: types.Message, state: FSMContext):
 async def handle_waiting_for_children(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     user_choice = msg.text.strip().lower()
-
     data = await state.get_data()
 
     if user_choice in ("yes", "no") and "children_answered" not in data:
@@ -212,17 +211,43 @@ async def handle_waiting_for_children(msg: types.Message, state: FSMContext):
             await state.set_state(BookingStates.waiting_for_room_count)
             return
 
-    if data.get("children_answered") == "yes":
-        if not msg.text.isdigit():
-            await msg.answer("❌ Please enter a valid number.")
+    if data.get("children_answered") == "yes" and "children_number" not in data:
+        if not msg.text.isdigit() or int(msg.text) < 1:
+            await msg.answer("❌ Please enter a valid number of children (must be at least 1).")
             return
 
-        set_session(user_id, "children", msg.text.strip())
-        await msg.answer("🛏️ How many rooms do you need?", reply_markup=keyboards.room_count)
-        await state.set_state(BookingStates.waiting_for_room_count)
+        await state.update_data(children_number=int(msg.text))
+        await msg.answer("📊 Please enter the ages of the children separated by commas (e.g., 5, 8, 12).")
+        await state.set_state(BookingStates.waiting_for_children_ages)
         return
 
-    await msg.answer("❓ Please select 'Yes' or 'No', or enter number of children.")
+    await msg.answer("❓ Please select 'Yes' or 'No', or enter the number of children.")
+
+@router.message(BookingStates.waiting_for_children_ages)
+async def handle_children_ages(msg: types.Message, state: FSMContext):
+    user_id = msg.from_user.id
+    ages_text = msg.text.strip()
+    data = await state.get_data()
+    expected_number = data.get("children_number", 0)
+
+    try:
+        ages = [int(age.strip()) for age in ages_text.split(",") if age.strip()]
+    except ValueError:
+        await msg.answer("❌ Please enter only numbers separated by commas.")
+        return
+
+    if len(ages) != expected_number:
+        await msg.answer(f"❌ You said there are {expected_number} children, but you provided {len(ages)} ages. Please try again.")
+        return
+
+    if any(age >= 18 or age < 0 for age in ages):
+        await msg.answer("❌ All children's ages must be between 0 and 17.")
+        return
+
+    set_session(user_id, "children", ",".join(map(str, ages)))
+
+    await msg.answer("🛏️ How many rooms do you need?", reply_markup=keyboards.room_count)
+    await state.set_state(BookingStates.waiting_for_room_count)
 
 @router.message(BookingStates.waiting_for_room_count)
 async def handle_waiting_for_room_count(msg: types.Message, state: FSMContext):
@@ -259,100 +284,104 @@ async def handle_fetching_results(msg: types.Message, state: FSMContext):
 
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=10)
-        if response.status_code == 200:
-            hotels_list = response.json().get("data", {}).get("hotels", [])
-            logger.info("Hotels returned: %s", hotels_list)
-            if not hotels_list or not isinstance(hotels_list, list):
-                await msg.answer("❌ No hotels found or the response was invalid.")
-                return
-            for hotel in hotels_list[:12]:
-                hotel_id = hotel.get("hotel_id", "unknown")
+        try:
+            response_data = response.json()
+        except Exception as e:
+            logger.error(f"Failed to parse hotel JSON: {e} - Raw response: {response.text}")
+            await msg.answer("⚠️ Failed to parse hotel data.")
+            return
 
-                url = "https://booking-com15.p.rapidapi.com/api/v1/hotels/getHotelDetails"
+        hotels_list = response_data.get("data", {}).get("hotels", [])
 
-                querystring = {
-                    "hotel_id": hotel_id,
-                    "arrival_date": user_data["checkin"],
-                    "departure_date": user_data["checkout"],
-                    "adults": user_data["adults"],
-                    "children_age": user_data.get("children", ""),
-                    "room_qty": user_data["room"],
-                    "page_number": "1",
-                    "languagecode": "en-us",
-                    "currency_code": "USD"
-                }
+        if not isinstance(hotels_list, list) or not hotels_list:
+            logger.warning(f"Empty or invalid hotel list: {hotels_list}")
+            await msg.answer("❌ No hotels found or the response was invalid.")
+            return
+        for hotel in hotels_list[:12]:
+            hotel_id = hotel.get("hotel_id", "unknown")
 
-                price_per_night = "N/A"
-                price_total = "N/A"
+            url = "https://booking-com15.p.rapidapi.com/api/v1/hotels/getHotelDetails"
 
-                try:
-                    response1 = requests.get(url, headers=headers, params=querystring, timeout=10)
-                    if response1.status_code == 200:
-                        price_per_night = response1.json().get("data", {}).get("product_price_breakdown", {}).get(
-                            "gross_amount_per_night", {}).get("amount_rounded", "N/A")
-                        price_total = response1.json().get("data", {}).get("product_price_breakdown", {}).get(
-                            "all_inclusive_amount", {}).get("amount_rounded", "N/A")
+            querystring = {
+                "hotel_id": hotel_id,
+                "arrival_date": user_data["checkin"],
+                "departure_date": user_data["checkout"],
+                "adults": user_data["adults"],
+                "children_age": user_data.get("children", ""),
+                "room_qty": user_data["room"],
+                "page_number": "1",
+                "languagecode": "en-us",
+                "currency_code": "USD"
+            }
 
-                except Exception as e:
-                    logging.error(e)
+            price_per_night = "N/A"
+            price_total = "N/A"
 
-                name = hotel.get("property", {}).get("name", "N/A")
-                price = hotel.get("property", {}).get("priceBreakdown", {}).get("grossPrice", {}).get("value", "N/A")
-                currency = hotel.get("property", {}).get("priceBreakdown", {}).get("grossPrice", {}).get("currency", "")
-                rating = hotel.get("property", {}).get("reviewScore", "N/A")
-                description = hotel.get("accessibilityLabel", "")
-                session = get_session(user_id)
+            try:
+                response1 = requests.get(url, headers=headers, params=querystring, timeout=10)
+                if response1.status_code == 200:
+                    price_per_night = response1.json().get("data", {}).get("product_price_breakdown", {}).get(
+                        "gross_amount_per_night", {}).get("amount_rounded", "N/A")
+                    price_total = response1.json().get("data", {}).get("product_price_breakdown", {}).get(
+                        "all_inclusive_amount", {}).get("amount_rounded", "N/A")
 
-                found_hotels_dict[hotel_id] = name
+            except Exception as e:
+                logging.error(e)
 
-                descs = session.get("hotel_descriptions")
-                if not isinstance(descs, dict):
-                    descs = {}
+            name = hotel.get("property", {}).get("name", "N/A")
+            price = hotel.get("property", {}).get("priceBreakdown", {}).get("grossPrice", {}).get("value", "N/A")
+            currency = hotel.get("property", {}).get("priceBreakdown", {}).get("grossPrice", {}).get("currency", "")
+            rating = hotel.get("property", {}).get("reviewScore", "N/A")
+            description = hotel.get("accessibilityLabel", "")
+            session = get_session(user_id)
 
-                descs[hotel_id] = description
+            found_hotels_dict[hotel_id] = name
 
-                set_session(user_id, "hotel_descriptions", descs)
+            descs = session.get("hotel_descriptions")
+            if not isinstance(descs, dict):
+                descs = {}
 
-                photos = hotel.get("property", {}).get("photoUrls", [])
+            descs[hotel_id] = description
 
-                photo_urls = [url for url in photos if isinstance(url, str) and ".jpg" in url]
-                photo_url = photo_urls[0] if photo_urls else None
+            set_session(user_id, "hotel_descriptions", descs)
 
-                caption = (
-                    f"🏨 <b>{name}</b>\n"
-                    f"💰 Price: {round(price, 2)} {currency} (taxes and fees included)\n"
-                    f"      Price per night: {price_per_night}\n"
-                    f"      Price in total: {price_total}\n"
-                    f"⭐ Rating: {rating}\n"
-                    f"To get more info please click on button below ⬇️"
-                )
+            photos = hotel.get("property", {}).get("photoUrls", [])
 
-                callback = f"moreinfo_{hotel_id}"
-                inline_keyboard = InlineKeyboardMarkup(
-                    inline_keyboard=[
-                        [InlineKeyboardButton(text="More Info 📝", callback_data=callback)],
-                    ]
-                )
+            photo_urls = [url for url in photos if isinstance(url, str) and ".jpg" in url]
+            photo_url = photo_urls[0] if photo_urls else None
 
-                try:
-                    if photo_url:
-                        await msg.answer_photo(photo=photo_url, caption=caption, parse_mode="html", reply_markup=inline_keyboard)
-                    else:
-                        await msg.answer(caption, parse_mode="html", reply_markup=inline_keyboard)
-                except Exception as e:
-                    logging.error(f"[Photo send failed] {e}")
-                    await msg.answer(caption, parse_mode="html", reply_markup=inline_keyboard)
-
-                set_session(user_id, "hotels_dict", found_hotels_dict)
-
-            await msg.answer(
-                "Please clarify the next step by clicking on relevant button below.",
-                reply_markup=keyboards.additional_functions
+            caption = (
+                f"🏨 <b>{name}</b>\n"
+                f"💰 Price: {round(price, 2)} {currency} (taxes and fees included)\n"
+                f"      Price per night: {price_per_night}\n"
+                f"      Price in total: {price_total}\n"
+                f"⭐ Rating: {rating}\n"
+                f"To get more info please click on button below ⬇️"
             )
-            await state.set_state(BookingStates.handling_next_step)
 
-        else:
-            await msg.answer("API Error. Please try again later.")
+            callback = f"moreinfo_{hotel_id}"
+            inline_keyboard = InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [InlineKeyboardButton(text="More Info 📝", callback_data=callback)],
+                ]
+            )
+
+            try:
+                if photo_url:
+                    await msg.answer_photo(photo=photo_url, caption=caption, parse_mode="html", reply_markup=inline_keyboard)
+                else:
+                    await msg.answer(caption, parse_mode="html", reply_markup=inline_keyboard)
+            except Exception as e:
+                logging.error(f"[Photo send failed] {e}")
+                await msg.answer(caption, parse_mode="html", reply_markup=inline_keyboard)
+
+            set_session(user_id, "hotels_dict", found_hotels_dict)
+
+        await msg.answer(
+            "Please clarify the next step by clicking on relevant button below.",
+            reply_markup=keyboards.additional_functions
+        )
+        await state.set_state(BookingStates.handling_next_step)
 
     except RequestException as e:
         logging.error(e)
@@ -435,7 +464,7 @@ async def handling_next_step(msg: types.Message, state: FSMContext):
     elif msg.text == "Check Nearby Locations":
         await msg.answer("🔍 Searching for nearby cities...")
         await state.set_state(BookingStates.checking_nearby_locations)
-        await checking_nearby_locations(msg, state)  # call handler manually
+        await checking_nearby_locations(msg, state)
 
     elif msg.text == "Reserve Room":
         await msg.answer("Great! Proceeding to reservation...")
@@ -443,10 +472,11 @@ async def handling_next_step(msg: types.Message, state: FSMContext):
         await choosing_hotel(msg, state)
 
     elif msg.text == "Another Search/Start Over":
-        await msg.answer("🔄 Starting a new search from the beginning...")
         clear_session(user_id)
         await state.clear()
-        await handle_continue(msg, state)
+        await msg.answer("🔄 Starting a new search from the beginning...\nPlease enter your destination:\n\n`City, Country`", parse_mode="Markdown")
+        await state.set_state(BookingStates.waiting_for_city_country)
+        await handle_waiting_for_country(msg, state)
 
     elif msg.text == "Stop Session":
         clear_session(user_id)
@@ -535,31 +565,40 @@ async def choosing_hotel(msg: types.Message, state: FSMContext):
     hotels_dict = get_session(user_id).get("hotels_dict", {})
 
     keyboard = []
+    for hotel_id, hotel_name in hotels_dict.items():
+        if isinstance(hotel_name, str):
+            keyboard.append([KeyboardButton(text=hotel_name)])
 
-    for hotel in hotels_dict.values():
-        keyboard.append([KeyboardButton(text=hotel.get("name", "N/A"))])
+    if not keyboard:
+        await msg.answer("⚠️ No valid hotels to show.")
+        return
 
-    hotels_markup = types.ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True, one_time_keyboard=True)
-    await msg.answer("Please choose the liked on from the hotels, presented below.", reply_markup=hotels_markup, parse_mode="HTML")
+    markup = types.ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
+    await msg.answer("Please choose one of the hotels presented below:", reply_markup=markup)
     await state.set_state(BookingStates.sending_reservation_link)
 
 @router.message(BookingStates.sending_reservation_link)
 async def sending_reservation_link(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     chosen_hotel_name = msg.text.strip()
-    chosen_hotel_id = ""
+    hotels_dict = get_session(user_id).get("hotels_dict", {})
 
-    for hotel_id, hotel in get_session(user_id).get("hotels_dict").items():
-        if hotel == chosen_hotel_name:
+    chosen_hotel_id = ""
+    for hotel_id, hotel_name in hotels_dict.items():
+        if hotel_name.strip().lower() == chosen_hotel_name.lower():
             chosen_hotel_id = hotel_id
             break
+
+    if not chosen_hotel_id:
+        await msg.answer("❌ Could not recognize the hotel you selected. Please try again.")
+        print(f"[DEBUG] User input hotel not found: {chosen_hotel_name}")
+        return
 
     set_session(user_id, "chosen_hotel_id", chosen_hotel_id)
 
     url = "https://booking-com15.p.rapidapi.com/api/v1/hotels/getHotelDetails"
-
     querystring = {
-        "hotel_id": get_session(user_id).get("chosen_hotel_id"),
+        "hotel_id": chosen_hotel_id,
         "arrival_date": get_session(user_id).get("checkin"),
         "departure_date": get_session(user_id).get("checkout"),
         "adults": get_session(user_id).get("adults"),
@@ -574,19 +613,22 @@ async def sending_reservation_link(msg: types.Message, state: FSMContext):
     try:
         response = requests.get(url, headers=headers, params=querystring, timeout=10)
         if response.status_code == 200:
-            await msg.answer("Wait a bit! You will be redirected to the official room reservation page of booking.com.", parse_mode="HTML")
-            time.sleep(3)
             booking_url = response.json().get("data", {}).get("url", None)
             if booking_url:
-                await msg.answer(f"🔗 Here’s your reservation link:\n{booking_url}")
+                await msg.answer("🔗Wait a bit! You will be redirected to the official room reservation page of booking.com.", parse_mode="HTML")
+                time.sleep(3)
                 webbrowser.open_new_tab(booking_url)
+                await msg.answer(f"Here’s your reservation link:\n{booking_url}")
             else:
-                await msg.answer("⚠️ Sorry, no direct reservation link found.")
+                await msg.answer("⚠️ No reservation link found.")
+        else:
+            await msg.answer(f"⚠️ API error: {response.status_code} - {response.text}")
 
-    except RequestException as e:
-        logger.error(f"API request failed: {e}")
-        await msg.answer(f"Server is not responding. Please try again later.\nError: {e}")
     except Exception as e:
-        logger.error(f"Detected error: {e}")
-        await msg.answer(f"Error occurred: {e}")
+        logger.error(f"[Reservation Link Error] {e}")
+        await msg.answer(f"An error occurred while fetching reservation link:\n{e}")
 
+@router.message()
+async def fallback(msg: types.Message):
+    await msg.answer("❓ I didn't understand that. Please select from the options.")
+    print(f"[UNHANDLED MESSAGE] {msg.text}")

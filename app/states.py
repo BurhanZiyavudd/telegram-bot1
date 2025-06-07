@@ -7,6 +7,7 @@ class BookingStates(StatesGroup):
     waiting_for_checkout_date = State()
     waiting_for_adults_number = State()
     waiting_for_children_number = State()
+    waiting_for_children_ages = State()
     waiting_for_room_count = State()
     fetching_results_from_server = State()
     handling_next_step = State()
