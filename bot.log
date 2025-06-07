@@ -56,3 +56,13 @@
 2025-06-07 21:06:53,856 [WARNING] Received SIGINT signal
 2025-06-07 21:06:53,857 [INFO] Polling stopped for bot @bilalsfordevelpment_bot id=8149749134 - 'For Development'
 2025-06-07 21:06:53,857 [INFO] Polling stopped
+2025-06-07 21:50:38,060 [INFO] Start polling
+2025-06-07 21:50:38,394 [INFO] Run polling for bot @globetrotter365_bot id=7822158167 - 'Globetrotter 365'
+2025-06-07 21:50:38,827 [INFO] Update id=783426695 is handled. Duration 320 ms by bot id=7822158167
+2025-06-07 21:50:38,851 [INFO] Update id=783426693 is handled. Duration 345 ms by bot id=7822158167
+2025-06-07 21:50:38,877 [INFO] Update id=783426692 is handled. Duration 372 ms by bot id=7822158167
+2025-06-07 21:50:38,907 [INFO] Update id=783426694 is handled. Duration 401 ms by bot id=7822158167
+2025-06-07 21:50:59,538 [INFO] Update id=783426696 is handled. Duration 119 ms by bot id=7822158167
+2025-06-07 21:52:30,345 [WARNING] Received SIGINT signal
+2025-06-07 21:52:30,346 [INFO] Polling stopped for bot @globetrotter365_bot id=7822158167 - 'Globetrotter 365'
+2025-06-07 21:52:30,346 [INFO] Polling stopped
