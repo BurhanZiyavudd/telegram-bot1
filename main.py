@@ -1,32 +1,36 @@
+from db import init_db
+from aiogram import Bot, Dispatcher
+from config import BOT_TOKEN
 import asyncio
 import logging
-from aiogram.filters import Command
+from logging.handlers import RotatingFileHandler
+from app.handlers import router
 
-from aiogram import Bot, Dispatcher, types
-from config import BOT_TOKEN
-import requests
-logging.basicConfig(level=logging.INFO)
+"""Loging a bot to the further actions"""
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    handlers=[
+        RotatingFileHandler("bot.log", maxBytes=2*1024*1024, backupCount=3),
+        logging.StreamHandler()
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 
 bot = Bot(token=BOT_TOKEN)
-
 dp = Dispatcher()
-
-@dp.message(Command("start"))
-async def welcome(message: types.Message):
-    await message.answer(
-        f"Hello {message.from_user.first_name},\nIt's nice to see you!"
-        f"\nHow may I help you today?"
-    )
-
-@dp.message(Command('status'))
-async def status(msg: types.Message):
-    response = requests.get("https://shiotstandard-production.up.railway.app/devices/1/status")
-    await msg.answer(response.json())
-
 
 
 async def main():
+    init_db()
+    dp.include_router(router)
     await dp.start_polling(bot)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        print("Exiting...")
