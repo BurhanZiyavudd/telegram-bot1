@@ -4,7 +4,7 @@ from config import BOT_TOKEN
 import asyncio
 import logging
 from logging.handlers import RotatingFileHandler
-from app.handlers import router
+from hotel_app.handlers import router
 
 """Loging a bot to the further actions"""
 

@@ -388,3 +388,8 @@ AttributeError: 'str' object has no attribute 'get'
 2025-06-08 03:25:12,117 [WARNING] Received SIGINT signal
 2025-06-08 03:25:12,118 [INFO] Polling stopped for bot @globetrotter365_bot id=7822158167 - 'Globetrotter 365'
 2025-06-08 03:25:12,118 [INFO] Polling stopped
+2025-06-08 22:31:11,932 [INFO] Start polling
+2025-06-08 22:31:12,312 [INFO] Run polling for bot @globetrotter365_bot id=7822158167 - 'Globetrotter 365'
+2025-06-08 22:31:14,596 [WARNING] Received SIGINT signal
+2025-06-08 22:31:14,596 [INFO] Polling stopped for bot @globetrotter365_bot id=7822158167 - 'Globetrotter 365'
+2025-06-08 22:31:14,596 [INFO] Polling stopped

@@ -2,7 +2,7 @@ import asyncio
 import logging
 import webbrowser
 from aiogram.fsm.context import FSMContext
-from app.states import BookingStates
+from hotel_app.states import HotelBookingState
 from config import RAPIDAPI_KEY
 from aiogram import types, Router, F
 from aiogram.types import KeyboardButton, InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
@@ -11,7 +11,7 @@ from db import *
 import time
 import requests
 from requests.exceptions import Timeout, RequestException
-import app.keyboards as keyboards
+import hotel_app.keyboards as keyboards
 from datetime import datetime
 
 
@@ -38,7 +38,7 @@ async def welcome(msg: types.Message):
 @router.message(F.text == "Continue")
 async def handle_continue(msg: types.Message, state: FSMContext):
     await msg.answer("Please enter your destination:\n\n`City, Country`", parse_mode="Markdown")
-    await state.set_state(BookingStates.waiting_for_city_country)
+    await state.set_state(HotelBookingState.waiting_for_city_country)
 
 @router.message(F.text == "Exit")
 async def handle_exit(msg: types.Message, state: FSMContext):
@@ -46,7 +46,7 @@ async def handle_exit(msg: types.Message, state: FSMContext):
     await msg.answer("Thank you for using Globetrotter 365!\nGoodbye!", parse_mode="Markdown", ReplyKeyboardRemove=True)
 
 
-@router.message(BookingStates.waiting_for_city_country)
+@router.message(HotelBookingState.waiting_for_city_country)
 async def handle_waiting_for_country(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     parts = [part.strip() for part in msg.text.split(',', 1)]
@@ -91,7 +91,7 @@ async def handle_waiting_for_country(msg: types.Message, state: FSMContext):
         )
 
         await msg.answer("\U0001F4CD Please choose the correct location:", reply_markup=markup)
-        await state.set_state(BookingStates.waiting_for_city_selection)
+        await state.set_state(HotelBookingState.waiting_for_city_selection)
 
     except Timeout:
         await msg.answer("\u23f1\ufe0f The server took too long to respond. Please try again.")
@@ -99,7 +99,7 @@ async def handle_waiting_for_country(msg: types.Message, state: FSMContext):
     except Exception as e:
         await msg.answer(f"\u26a0\ufe0f Unexpected error: {str(e)}")
 
-@router.message(BookingStates.waiting_for_city_selection)
+@router.message(HotelBookingState.waiting_for_city_selection)
 async def handle_waiting_for_city(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     if msg.text == "Not listed":
@@ -114,10 +114,10 @@ async def handle_waiting_for_city(msg: types.Message, state: FSMContext):
             )
 
             await msg.answer(f"\u274c You might had in view on of these locations...", parse_mode="Markdown", reply_markup=markup)
-            return await state.set_state(BookingStates.waiting_for_city_selection)
+            return await state.set_state(HotelBookingState.waiting_for_city_selection)
         else:
             await msg.answer("No locations found with this name. Please try to enter the names or consider the nearby destinations...", parse_mode="Markdown")
-            return await state.set_state(BookingStates.waiting_for_city_country)
+            return await state.set_state(HotelBookingState.waiting_for_city_country)
     else:
         for loc in get_session(user_id).get("locations", []):
             label = loc.get("label", "").strip().lower()
@@ -135,9 +135,9 @@ async def handle_waiting_for_city(msg: types.Message, state: FSMContext):
         chosen_label = msg.text
         await state.update_data(location_label=chosen_label)
         await msg.answer("📅 Please indicate your check-in date in DD/MM/YYYY format:")
-        await state.set_state(BookingStates.waiting_for_checkin_date)
+        await state.set_state(HotelBookingState.waiting_for_checkin_date)
 
-@router.message(BookingStates.waiting_for_checkin_date)
+@router.message(HotelBookingState.waiting_for_checkin_date)
 async def handle_waiting_for_checkin(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     try:
@@ -146,12 +146,12 @@ async def handle_waiting_for_checkin(msg: types.Message, state: FSMContext):
         formatted_checkin = datetime.strptime(input_checkin_date, "%d/%m/%Y").strftime("%Y-%m-%d")
         set_session(user_id, "checkin", formatted_checkin)
         await msg.answer("📅 Now enter your check-out date in DD/MM/YYYY format:")
-        await state.set_state(BookingStates.waiting_for_checkout_date)
+        await state.set_state(HotelBookingState.waiting_for_checkout_date)
     except ValueError:
         await msg.answer("\u274c Invalid date format. Please try again.")
-        return await state.set_state(BookingStates.waiting_for_checkin_date)
+        return await state.set_state(HotelBookingState.waiting_for_checkin_date)
 
-@router.message(BookingStates.waiting_for_checkout_date)
+@router.message(HotelBookingState.waiting_for_checkout_date)
 async def handle_waiting_for_checkout(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     try:
@@ -164,12 +164,12 @@ async def handle_waiting_for_checkout(msg: types.Message, state: FSMContext):
                          parse_mode="Markdown",
                          reply_markup=keyboards.adults_number
             )
-        await state.set_state(BookingStates.waiting_for_adults_number)
+        await state.set_state(HotelBookingState.waiting_for_adults_number)
     except ValueError:
         await msg.answer("\u274c Invalid date format. Please try again.")
-        return await state.set_state(BookingStates.waiting_for_checkout_date)
+        return await state.set_state(HotelBookingState.waiting_for_checkout_date)
 
-@router.message(BookingStates.waiting_for_adults_number)
+@router.message(HotelBookingState.waiting_for_adults_number)
 async def handle_waiting_for_adults(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     input_adults = msg.text.strip()
@@ -187,43 +187,43 @@ async def handle_waiting_for_adults(msg: types.Message, state: FSMContext):
         await state.update_data(adults=input_adults)
         set_session(user_id, "adults", input_adults)
         await msg.answer(f"✅ Got it. {input_adults} adult(s)\n\nAre there any children who's age is under 18 years old with you?", reply_markup=markup)
-        await state.set_state(BookingStates.waiting_for_children_number)
+        await state.set_state(HotelBookingState.waiting_for_children_number)
 
     else:
         await msg.answer("Please enter a valid adults number.")
-        return await state.set_state(BookingStates.waiting_for_adults_number)
+        return await state.set_state(HotelBookingState.waiting_for_adults_number)
 
-@router.message(BookingStates.waiting_for_children_number)
+@router.message(HotelBookingState.waiting_for_children_number)
 async def handle_waiting_for_children(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     user_choice = msg.text.strip().lower()
     data = await state.get_data()
 
-    if user_choice in ("yes", "no") and "children_answered" not in data:
-        if user_choice == "yes":
-            await state.update_data(children_answered="yes")
-            await msg.answer("🧒 How many children (under 18 y.o) will stay?", reply_markup=keyboards.children_number)
-            return
-        elif user_choice == "no":
-            set_session(user_id, "children", "0")
-            await state.update_data(children_answered="no")
-            await msg.answer("🛏️ How many rooms do you need?", reply_markup=keyboards.room_count)
-            await state.set_state(BookingStates.waiting_for_room_count)
-            return
+    if user_choice in ("yes", "no"):
+        await state.update_data(children_answered=user_choice)
 
-    if data.get("children_answered") == "yes" and "children_number" not in data:
-        if not msg.text.isdigit() or int(msg.text) < 1:
+        if user_choice == "yes":
+            await msg.answer("🧒 How many children (under 18 y.o) will stay?", reply_markup=keyboards.children_number)
+        else:
+            set_session(user_id, "children", "0")
+            await msg.answer("🛏️ How many rooms do you need?", reply_markup=keyboards.room_count)
+            await state.set_state(HotelBookingState.waiting_for_room_count)
+        return
+
+    if data.get("children_answered") == "yes":
+        if not user_choice.isdigit() or int(user_choice) < 1:
             await msg.answer("❌ Please enter a valid number of children (must be at least 1).")
             return
 
-        await state.update_data(children_number=int(msg.text))
+        await state.update_data(children_number=int(user_choice))
         await msg.answer("📊 Please enter the ages of the children separated by commas (e.g., 5, 8, 12).")
-        await state.set_state(BookingStates.waiting_for_children_ages)
+        await state.set_state(HotelBookingState.waiting_for_children_ages)
         return
 
+    # Fallback
     await msg.answer("❓ Please select 'Yes' or 'No', or enter the number of children.")
 
-@router.message(BookingStates.waiting_for_children_ages)
+@router.message(HotelBookingState.waiting_for_children_ages)
 async def handle_children_ages(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     ages_text = msg.text.strip()
@@ -247,9 +247,9 @@ async def handle_children_ages(msg: types.Message, state: FSMContext):
     set_session(user_id, "children", ",".join(map(str, ages)))
 
     await msg.answer("🛏️ How many rooms do you need?", reply_markup=keyboards.room_count)
-    await state.set_state(BookingStates.waiting_for_room_count)
+    await state.set_state(HotelBookingState.waiting_for_room_count)
 
-@router.message(BookingStates.waiting_for_room_count)
+@router.message(HotelBookingState.waiting_for_room_count)
 async def handle_waiting_for_room_count(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     room_count = msg.text.strip()[-2]
@@ -258,7 +258,7 @@ async def handle_waiting_for_room_count(msg: types.Message, state: FSMContext):
     await msg.answer("Starting checking for available hotels...")
     await handle_fetching_results(msg, state)
 
-@router.message(BookingStates.fetching_results_from_server)
+@router.message(HotelBookingState.fetching_results_from_server)
 async def handle_fetching_results(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
 
@@ -381,7 +381,7 @@ async def handle_fetching_results(msg: types.Message, state: FSMContext):
             "Please clarify the next step by clicking on relevant button below.",
             reply_markup=keyboards.additional_functions
         )
-        await state.set_state(BookingStates.handling_next_step)
+        await state.set_state(HotelBookingState.handling_next_step)
 
     except RequestException as e:
         logging.error(e)
@@ -452,30 +452,30 @@ async def moreinfo_callback(call: CallbackQuery):
     except Exception as e:
         await call.message.answer(f"⚠️ Failed to fetch images: {e}")
 
-@router.message(BookingStates.handling_next_step)
+@router.message(HotelBookingState.handling_next_step)
 async def handling_next_step(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
 
     if msg.text == "Set Price Limit":
         await msg.answer("Please enter the maximum price that you are considering "
                          "(just the number, like `1000`. Amount will be accounted in USD)...", parse_mode="Markdown")
-        await state.set_state(BookingStates.setting_max_price)
+        await state.set_state(HotelBookingState.setting_max_price)
 
     elif msg.text == "Check Nearby Locations":
         await msg.answer("🔍 Searching for nearby cities...")
-        await state.set_state(BookingStates.checking_nearby_locations)
+        await state.set_state(HotelBookingState.checking_nearby_locations)
         await checking_nearby_locations(msg, state)
 
     elif msg.text == "Reserve Room":
         await msg.answer("Great! Proceeding to reservation...")
-        await state.set_state(BookingStates.choosing_hotel)
+        await state.set_state(HotelBookingState.choosing_hotel)
         await choosing_hotel(msg, state)
 
     elif msg.text == "Another Search/Start Over":
         clear_session(user_id)
         await state.clear()
         await msg.answer("🔄 Starting a new search from the beginning...\nPlease enter your destination:\n\n`City, Country`", parse_mode="Markdown")
-        await state.set_state(BookingStates.waiting_for_city_country)
+        await state.set_state(HotelBookingState.waiting_for_city_country)
         await handle_waiting_for_country(msg, state)
 
     elif msg.text == "Stop Session":
@@ -483,7 +483,7 @@ async def handling_next_step(msg: types.Message, state: FSMContext):
         await state.clear()
         await msg.answer("👋 Session ended. Come back any time!")
 
-@router.message(BookingStates.setting_max_price)
+@router.message(HotelBookingState.setting_max_price)
 async def setting_max_price(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     max_price = msg.text.strip()
@@ -493,9 +493,9 @@ async def setting_max_price(msg: types.Message, state: FSMContext):
         await handle_fetching_results(msg, state)
     else:
         await msg.answer("❌ Please enter digits only (no letters or special characters).")
-        await state.set_state(BookingStates.setting_max_price)
+        await state.set_state(HotelBookingState.setting_max_price)
 
-@router.message(BookingStates.checking_nearby_locations)
+@router.message(HotelBookingState.checking_nearby_locations)
 async def checking_nearby_locations(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
 
@@ -532,13 +532,13 @@ async def checking_nearby_locations(msg: types.Message, state: FSMContext):
         )
 
         await msg.answer("📍 Please choose a nearby city:", reply_markup=markup)
-        await state.set_state(BookingStates.selecting_nearby_location)
+        await state.set_state(HotelBookingState.selecting_nearby_location)
 
     except Exception as e:
         logger.error(f"[Nearby City Error] {e}")
         await msg.answer(f"🚫 Could not retrieve nearby cities.\n\nError: {e}")
 
-@router.message(BookingStates.selecting_nearby_location)
+@router.message(HotelBookingState.selecting_nearby_location)
 async def selecting_nearby_location(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     selected_location = msg.text.strip().lower()
@@ -559,7 +559,7 @@ async def selecting_nearby_location(msg: types.Message, state: FSMContext):
             return
     await msg.answer("⚠️ Invalid selection. Please select a location from the list again.")
 
-@router.message(BookingStates.choosing_hotel)
+@router.message(HotelBookingState.choosing_hotel)
 async def choosing_hotel(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     hotels_dict = get_session(user_id).get("hotels_dict", {})
@@ -575,9 +575,9 @@ async def choosing_hotel(msg: types.Message, state: FSMContext):
 
     markup = types.ReplyKeyboardMarkup(keyboard=keyboard, resize_keyboard=True)
     await msg.answer("Please choose one of the hotels presented below:", reply_markup=markup)
-    await state.set_state(BookingStates.sending_reservation_link)
+    await state.set_state(HotelBookingState.sending_reservation_link)
 
-@router.message(BookingStates.sending_reservation_link)
+@router.message(HotelBookingState.sending_reservation_link)
 async def sending_reservation_link(msg: types.Message, state: FSMContext):
     user_id = msg.from_user.id
     chosen_hotel_name = msg.text.strip()

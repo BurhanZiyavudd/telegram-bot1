@@ -7,7 +7,7 @@ from db import set_session
 import requests
 from config import RAPIDAPI_KEY
 from states import BookingState
-import app.keyboards as keyboards
+import hotel_app.keyboards as keyboards
 
 router = Router()
 

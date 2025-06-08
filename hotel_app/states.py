@@ -1,6 +1,6 @@
 from aiogram.fsm.state import State, StatesGroup
 
-class BookingStates(StatesGroup):
+class HotelBookingState(StatesGroup):
     waiting_for_city_country = State()
     waiting_for_city_selection = State()
     waiting_for_checkin_date = State()
