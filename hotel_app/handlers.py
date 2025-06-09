@@ -145,7 +145,7 @@ async def handle_waiting_for_checkin(msg: types.Message, state: FSMContext):
         await state.update_data(checkin_date=input_checkin_date)
         formatted_checkin = datetime.strptime(input_checkin_date, "%d/%m/%Y").strftime("%Y-%m-%d")
         set_session(user_id, "checkin", formatted_checkin)
-        await msg.answer("📅 Now enter your check-out date in DD/MM/YYYY format:")
+        await msg.answer("✔️ Check-in date accepted. Now please enter your check-out date in DD/MM/YYYY format:")
         await state.set_state(HotelBookingState.waiting_for_checkout_date)
     except ValueError:
         await msg.answer("\u274c Invalid date format. Please try again.")
@@ -153,6 +153,8 @@ async def handle_waiting_for_checkin(msg: types.Message, state: FSMContext):
 
 @router.message(HotelBookingState.waiting_for_checkout_date)
 async def handle_waiting_for_checkout(msg: types.Message, state: FSMContext):
+    current_state = await state.get_state()
+    print(f"[DEBUG] Current state: {current_state}")
     user_id = msg.from_user.id
     try:
         input_checkout_date = msg.text
@@ -220,7 +222,6 @@ async def handle_waiting_for_children(msg: types.Message, state: FSMContext):
         await state.set_state(HotelBookingState.waiting_for_children_ages)
         return
 
-    # Fallback
     await msg.answer("❓ Please select 'Yes' or 'No', or enter the number of children.")
 
 @router.message(HotelBookingState.waiting_for_children_ages)
